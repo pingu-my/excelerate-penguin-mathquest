@@ -9,6 +9,7 @@ import streamlit.components.v1 as components
 
 from curriculum import PATHS, DIFFICULTIES, POINTS, available_topics
 from question_engine import build_adventure
+from teacher_dashboard import teacher_dashboard
 from answer_checker import number
 from scoring import record, summary
 from leaderboard import save, rows
@@ -21,6 +22,13 @@ st.set_page_config(
     page_icon="🐧",
     layout="centered",
 )
+
+with st.sidebar:
+    app_view = st.radio("Open", ["Student adventure", "Teacher dashboard"], key="app_view")
+
+if app_view == "Teacher dashboard":
+    teacher_dashboard()
+    st.stop()
 
 st.title("🐧 EXCELerate Penguin MathQuest")
 st.markdown(
