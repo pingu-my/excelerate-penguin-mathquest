@@ -94,3 +94,659 @@ def answer_choices(label, options, key):
     columns = st.columns(2)
     for i, option in enumerate(options):
         with columns[i % 2]:
+            st.markdown(f"**{letters[i]}**")
+            # The renderer receives generated numeric strings only.
+            value = str(option)
+            match = re.fullmatch(r'(-?\d+)\s*/\s*(\d+)', value)
+            if match:
+                st.latex(rf'\dfrac{{{match[1]}}}{{{match[2]}}}')
+            else:
+                st.latex(value)
+    selected = st.radio(label, letters, index=None, horizontal=True, key=key)
+    return None if selected is None else options[letters.index(selected)]
+
+
+def show_hint(hint):
+    if hint.startswith("Try this calculation: "):
+        st.info("🐧 Try this calculation:")
+        st.latex(hint.split(": ", 1)[1])
+    elif hint.startswith("Calculations to try: "):
+        st.info("🐧 Try these calculations:")
+        for expression in hint.split(": ", 1)[1].split("; "):
+            st.latex(expression)
+    else:
+        st.info("🐧 " + fraction_text(hint))
+
+
+def show_response(value):
+    if isinstance(value, list):
+        for i, answer in enumerate(value):
+            math_text(f"**{chr(65+i)}:** {answer}")
+    else:
+        math_text(value)
+
+def game_message(message):
+    st.markdown(f'<div class="bubble">🐧 <b>Waddle says:</b> {escape(message)}</div>', unsafe_allow_html=True)
+
+
+def rewards(results):
+    """Cosmetic rewards never alter assessment points or leaderboard scores."""
+    streak = best = correct = 0
+    for result in results:
+        if result["correct"]:
+            correct += 1
+            streak += 1
+            best = max(best, streak)
+        else:
+            streak = 0
+    return {"fish": correct, "streak": streak, "best": best}
+
+
+def adventure_map(completed, total):
+    places = [("🏕️", "Ice Camp"), ("🧊", "Frozen Lake"), ("🏔️", "Glacier"), ("👑", "Penguin Kingdom")]
+    stage = min(3, int(3 * completed / max(total, 1)))
+    cards = ''.join(f'<div class="stop {"active" if i <= stage else ""}"><b>{icon}</b>{label}{"<br>🐧 You are here" if i == stage else ""}</div>' for i, (icon, label) in enumerate(places))
+    st.markdown(f'<div class="map" aria-label="Adventure journey">{cards}</div>', unsafe_allow_html=True)
+
+
+st.markdown(f'<div class="hero">{PENGUIN}<div><div class="eyebrow">EXCELERATE LEARNING SPACE</div><h1>Penguin MathQuest</h1><p>Little steps. Big discoveries. Let’s learn with Waddle!</p><span class="pill">🐟 Solve • Collect • Explore</span></div></div>', unsafe_allow_html=True)
+
+
+@st.cache_data
+def load_music(music_path, modified_time):
+    """Cache the encoded music; refresh when the file changes."""
+    return base64.b64encode(
+        Path(music_path).read_bytes()
+    ).decode("ascii")
+
+
+with st.sidebar:
+    st.header("🐧 Waddle’s corner")
+    st.write(
+        "Use paper for your working. Think carefully before submitting."
+    )
+    st.subheader("🗺️ Your adventure")
+    sidebar_quest = st.session_state.get("quest")
+    if sidebar_quest:
+        sidebar_loot = rewards(sidebar_quest["results"])
+        sidebar_stats = summary(sidebar_quest["results"])
+        adventure_map(len(sidebar_quest["results"]), len(sidebar_quest["questions"]))
+        st.metric("⭐ Points", sidebar_stats["score"])
+        st.metric("🐟 Fish collected", sidebar_loot["fish"])
+        st.metric("🔥 Streak", sidebar_loot["streak"])
+    else:
+        adventure_map(0, 10)
+        st.metric("⭐ Points", 0)
+        st.metric("🐟 Fish collected", 0)
+        st.metric("🔥 Streak", 0)
+
+
+    if st.toggle(
+        "🎵 Study music",
+        value=True,
+        key="study_music_enabled",
+    ):
+        music_path = (
+            Path(__file__).parent / "assets/study_music.mp3"
+        )
+
+        if music_path.exists():
+            encoded_music = load_music(
+                str(music_path),
+                music_path.stat().st_mtime_ns,
+            )
+
+            components.html(
+                f"""
+                <audio
+                    id="waddle-music"
+                    controls
+                    loop
+                    preload="auto"
+                    aria-label="Waddle's study music"
+                    style="width:100%;"
+                >
+                    <source
+                        src="data:audio/mpeg;base64,{encoded_music}"
+                        type="audio/mpeg"
+                    >
+                </audio>
+
+                <p
+                    id="music-message"
+                    style="font:12px sans-serif;color:#666;"
+                ></p>
+
+                <script>
+                    const music =
+                        document.getElementById("waddle-music");
+
+                    // 0.10 = 10% starting volume.
+                    // Change to 0.05 for 5%.
+                    music.volume = 0.10;
+
+                    music.play().catch(() => {{
+                        document.getElementById(
+                            "music-message"
+                        ).textContent =
+                            "Press Play to start the study music.";
+                    }});
+                </script>
+                """,
+                height=100,
+            )
+
+        else:
+            st.info(
+                "Upload study_music.mp3 into the assets folder."
+            )
+
+    if "quest" in st.session_state and st.button("Return to start"):
+        del st.session_state.quest
+        st.rerun()
+
+
+if "quest" not in st.session_state:
+    game_message("Help me reach Penguin Kingdom! Each correct answer earns a fish. Take your time and use a hint whenever you need one.")
+    st.subheader("🎒 Pack your adventure bag")
+
+    name = st.text_input(
+        "Student first name or nickname",
+        max_chars=50,
+    )
+
+    year = st.selectbox("Primary year", [4, 5, 6])
+    syllabus = st.selectbox("Learning path", PATHS)
+
+    topic = st.selectbox(
+        "Mathematics topic",
+        available_topics(year, syllabus),
+    )
+
+    mode = st.radio(
+        "Adventure level",
+        DIFFICULTIES + ["All three levels"],
+    )
+
+    st.write("10 questions per level · All three levels = 30 questions")
+
+    st.caption(
+        "Starter practice uses shared mathematics skills. "
+        "The learning path is recorded in your results; "
+        "this version does not claim official curriculum alignment."
+    )
+
+    consent = st.checkbox(
+        "Show my nickname and completed result on this app’s leaderboard",
+        value=False,
+    )
+
+    if st.button("🐧 Let’s waddle!", type="primary"):
+        if not name.strip():
+            st.warning("Enter your first name or nickname to begin.")
+        else:
+            st.session_state.quest = {
+                "run_id": uuid4().hex,
+                "profile": {
+                    "name": name.strip(),
+                    "year": year,
+                    "syllabus": syllabus,
+                    "topic": topic,
+                    "mode": mode,
+                },
+                "questions": build_adventure(
+                    year, syllabus, topic, mode
+                ),
+                "index": 0,
+                "results": [],
+                "hints": 0,
+                "share": consent,
+                "saved": False,
+            }
+            st.rerun()
+
+    st.stop()
+
+
+quest = st.session_state.quest
+profile = quest["profile"]
+stats = summary(quest["results"])
+loot = rewards(quest["results"])
+
+st.subheader(
+    f"Primary {profile['year']} · {profile['topic']}"
+)
+
+
+st.progress(
+    len(quest["results"]) / max(1, len(quest["questions"]))
+)
+
+
+st.caption(f"{len(quest['results'])} of {len(quest['questions'])} questions explored · A fish for every correct answer!")
+
+if quest["index"] == len(quest["questions"]):
+    st.success(
+        "🏆 Adventure complete! Keep waddling towards excellence!"
+    )
+
+    st.write(
+        f"**{stats['correct']}/{stats['questions']} correct · "
+        f"{stats['accuracy']:.1f}% accuracy · "
+        f"{stats['score']} points**"
+    )
+
+    game_message(f"You made it, {profile['name']}! You collected {loot['fish']} fish and your best streak was {loot['best']}. Every question helps your maths grow.")
+    badges = ["🏁 Adventure explorer"]
+    if loot["fish"] >= 1:
+        badges.append("🐟 First fish")
+    if loot["best"] >= 3:
+        badges.append("🔥 Three in a row")
+    if stats["accuracy"] >= 80:
+        badges.append("⭐ Maths star")
+    if stats["accuracy"] == 100:
+        badges.append("👑 Perfect penguin")
+    st.markdown('<div class="badges">' + ''.join(f'<span class="badge">{b}</span>' for b in badges) + '</div>', unsafe_allow_html=True)
+    if not quest.get("celebrated"):
+        quest["celebrated"] = True
+        st.balloons()
+    missed = list(dict.fromkeys(q["difficulty"] for q, r in zip(quest["questions"], quest["results"]) if not r["correct"]))
+    if missed:
+        st.info("🎯 Your next mission: review the solutions below, then practise " + ", ".join(map(str, missed)) + " again.")
+
+    level_results = []
+
+    for difficulty in dict.fromkeys(
+        result["difficulty"] for result in quest["results"]
+    ):
+        difficulty_stats = summary(
+            [
+                result
+                for result in quest["results"]
+                if result["difficulty"] == difficulty
+            ]
+        )
+
+        level_results.append(
+            {
+                "Level": difficulty,
+                "score": difficulty_stats["score"],
+                "correct": difficulty_stats["correct"],
+                "questions": difficulty_stats["questions"],
+            }
+        )
+
+    st.table(level_results)
+
+    if quest["share"] and not quest["saved"]:
+        try:
+            save(
+                quest["run_id"],
+                profile,
+                stats,
+            )
+            quest["saved"] = True
+
+        except Exception:
+            st.warning(
+                "Could not save the leaderboard result. "
+                "Your certificate is still available. "
+                "Reload to retry."
+            )
+
+    st.download_button(
+        "🎓 Download PDF certificate",
+        create_certificate(
+            profile,
+            quest["results"],
+            quest["run_id"],
+        ),
+        file_name="EXCELerate_MathQuest_Certificate.pdf",
+        mime="application/pdf",
+    )
+
+    output = io.StringIO()
+
+    writer = csv.DictWriter(
+        output,
+        fieldnames=[
+            "id",
+            "difficulty",
+            "correct",
+            "points",
+            "hints",
+            "response",
+        ],
+    )
+
+    writer.writeheader()
+    # Ignore extra internal fields; protect spreadsheet exports from formula input.
+    def csv_value(value):
+        value = str(value)
+        return "'" + value if value.lstrip().startswith(("=", "+", "-", "@")) else value
+
+    for result in quest["results"]:
+        writer.writerow({field: csv_value(result.get(field, "")) for field in writer.fieldnames})
+
+    st.download_button(
+        "Download my question results (CSV)",
+        output.getvalue(),
+        file_name="MathQuest_Results.csv",
+        mime="text/csv",
+    )
+
+    with st.expander("Review your questions and solutions"):
+        for i, (question, result) in enumerate(
+            zip(quest["questions"], quest["results"]),
+            1,
+        ):
+            feedback = (
+                "Correct"
+                if result["correct"]
+                else "Keep practising"
+            )
+
+            st.markdown(
+                f"**Question {i} · "
+                f"{question['difficulty']} · "
+                f"{feedback}**"
+            )
+
+            math_text(question["instruction"])
+
+            if question["latex"]:
+                st.latex(question["latex"].replace(r"\frac", r"\dfrac"))
+
+            if question["question_type"] in [
+                "matching",
+                "drag_drop",
+            ]:
+                problems = question.get(
+                    "pairs",
+                    question.get("problems", []),
+                )
+
+                for problem in problems:
+                    math_text(problem["prompt"])
+                    st.latex(problem["solution"].replace(r"\frac", r"\dfrac"))
+
+                if question["question_type"] == "drag_drop":
+                    st.write(
+                        "Order: "
+                        + " → ".join(question["answer"])
+                    )
+
+            else:
+                st.latex(question["solution"].replace(r"\frac", r"\dfrac"))
+
+    st.subheader("🏆 Waddle’s Hall of Fame")
+
+    st.caption(
+        "Completed runs for the same Primary year, "
+        "learning path, topic and level. "
+        "Nicknames are self-entered; "
+        "this is a friendly practice leaderboard."
+    )
+
+    try:
+        entries = rows(profile)
+
+        if not entries:
+            st.info(
+                "No shared results in this adventure yet."
+            )
+
+        else:
+            if quest["saved"]:
+                rank = next(
+                    (
+                        i
+                        for i, entry in enumerate(entries, 1)
+                        if entry["run_id"] == quest["run_id"]
+                    ),
+                    None,
+                )
+
+                st.write(
+                    f"Your adventure position: #{rank}"
+                )
+
+            leaderboard_display = [
+                {
+                    "Rank": i,
+                    "Nickname": entry["name"],
+                    "Points": entry["score"],
+                    "Correct": (
+                        f"{entry['correct']}/"
+                        f"{entry['questions']}"
+                    ),
+                    "Accuracy": (
+                        f"{entry['accuracy']:.1f}%"
+                    ),
+                }
+                for i, entry in enumerate(entries[:10], 1)
+            ]
+
+            st.dataframe(
+                leaderboard_display,
+                hide_index=True,
+            )
+
+    except Exception:
+        st.warning(
+            "Leaderboard is currently unavailable."
+        )
+
+    if st.button("🔄 Start a new adventure"):
+        del st.session_state.quest
+        st.rerun()
+
+    st.stop()
+
+
+question = quest["questions"][quest["index"]]
+key = f"{quest['run_id']}_{question['id']}"
+
+answered = (
+    len(quest["results"]) > quest["index"]
+)
+
+st.markdown(
+    f"### ❄️ Challenge {quest['index'] + 1}/"
+    f"{len(quest['questions'])} · "
+    f"{question['difficulty']}"
+)
+
+st.caption(
+    f"{question['question_type'].replace('_', ' ').title()} · "
+    f"Up to {POINTS[question['difficulty']][0]} points"
+)
+
+math_text(question["instruction"])
+
+if question["latex"]:
+    st.latex(question["latex"].replace(r"\frac", r"\dfrac"))
+
+response = None
+
+
+if not answered:
+    if question["question_type"] == "numeric":
+        response = st.text_input(
+            "Your answer",
+            key=key,
+            placeholder="e.g. 20, 0.5, 1/2, 1 1/2 or 50%",
+        )
+
+        st.caption(
+            "Use the units in the question; "
+            "type the number only. "
+            "Fractions and exact equivalent decimals "
+            "or percentages are accepted. "
+            "Do not round unless asked."
+        )
+
+    elif question["question_type"] == "mcq":
+        response = answer_choices("Choose one answer", question["options"], key)
+
+    elif question["question_type"] == "matching":
+        response = []
+
+        for i, problem in enumerate(question["pairs"]):
+            math_text(f"**{chr(65 + i)}.** {problem['prompt']}")
+
+            if problem["latex"]:
+                st.latex(problem["latex"].replace(r"\frac", r"\dfrac"))
+
+            selected_answer = answer_choices(
+                f"Choose the matching answer for {chr(65+i)}",
+                question["options"],
+                f"{key}_match_{i}",
+            )
+
+            response.append(selected_answer)
+
+    else:
+        for problem in question["problems"]:
+            math_text(f"**{problem['label']}.** {problem['prompt']}")
+
+            if problem["latex"]:
+                st.latex(problem["latex"].replace(r"\frac", r"\dfrac"))
+
+        response = ordering(
+            question["cards"],
+            key,
+        )
+
+    if quest["hints"] < min(3, len(question["hints"]), len(POINTS[question["difficulty"]]) - 1):
+        if st.button(
+            f"💡 Ask Waddle for hint {quest['hints'] + 1}",
+            key=key + "_hint",
+        ):
+            quest["hints"] += 1
+            st.rerun()
+
+    for hint in question["hints"][:quest["hints"]]:
+        show_hint(hint)
+
+    available_points = POINTS[
+        question["difficulty"]
+    ][quest["hints"]]
+
+    st.caption(
+        f"Correct answer now earns {available_points} points."
+    )
+
+    if st.button(
+        "🐧 Submit answer",
+        type="primary",
+        key=key + "_submit",
+    ):
+        complete = (
+            response is not None
+            and response != ""
+            and (
+                not isinstance(response, list)
+                or all(
+                    value is not None
+                    for value in response
+                )
+            )
+        )
+
+        if (
+            question["question_type"] == "numeric"
+            and complete
+        ):
+            try:
+                number(response)
+
+            except (ValueError, ZeroDivisionError):
+                complete = False
+
+                st.warning(
+                    "Use a valid number or fraction, "
+                    "without units. "
+                    "A fraction cannot have zero "
+                    "as its denominator."
+                )
+
+        if not complete:
+            st.warning(
+                "Complete your answer before submitting."
+            )
+
+        else:
+            record(
+                quest["results"],
+                question,
+                response,
+                quest["hints"],
+            )
+            st.rerun()
+
+
+else:
+    result = quest["results"][quest["index"]]
+
+    if result["correct"]:
+        st.success(
+            f"🎉 Waddle-tastic! "
+            f"+{result['points']} points and +1 fish!"
+        )
+
+    else:
+        st.info(
+            "🐧 Good effort. Study the solution, "
+            "then try the next problem."
+        )
+
+    if result["correct"] and loot["streak"] >= 3:
+        game_message(f"Amazing thinking! {loot['streak']} correct answers in a row!")
+    elif not result["correct"]:
+        game_message("Mistakes help us learn! Compare your working with the solution, then explain the next step to yourself.")
+
+    st.markdown("**Your submitted answer:**")
+    show_response(result["response"])
+
+    st.markdown("**Solution**")
+
+    if question["question_type"] in [
+        "matching",
+        "drag_drop",
+    ]:
+        problems = question.get(
+            "pairs",
+            question.get("problems", []),
+        )
+
+        for problem in problems:
+            st.latex(problem["solution"].replace(r"\frac", r"\dfrac"))
+
+        if question["question_type"] == "drag_drop":
+            st.write(
+                "Correct order: "
+                + " → ".join(question["answer"])
+            )
+
+    else:
+        st.latex(question["solution"].replace(r"\frac", r"\dfrac"))
+
+    is_last_question = (
+        quest["index"] + 1 == len(quest["questions"])
+    )
+
+    next_button_label = (
+        "Finish adventure 🏆"
+        if is_last_question
+        else "Next ice step ➜"
+    )
+
+    if st.button(
+        next_button_label,
+        type="primary",
+        key=key + "_next",
+    ):
+        quest["index"] += 1
+        quest["hints"] = 0
+        st.rerun()
