@@ -1,9 +1,11 @@
 from pathlib import Path
 from uuid import uuid4
+import base64
 import csv
 import io
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 from curriculum import PATHS, DIFFICULTIES, POINTS, available_topics
 from question_engine import build_adventure
@@ -27,6 +29,14 @@ st.markdown(
 st.caption("Waddle is your mathematics adventure guide.")
 
 
+@st.cache_data
+def load_music(music_path, modified_time):
+    """Cache the encoded music; refresh when the file changes."""
+    return base64.b64encode(
+        Path(music_path).read_bytes()
+    ).decode("ascii")
+
+
 with st.sidebar:
     st.header("🐧 Waddle’s corner")
     st.write(
@@ -38,11 +48,65 @@ with st.sidebar:
         "when the whole answer is correct."
     )
 
-    if st.toggle("🎵 Study music"):
-        st.audio(
-            str(Path(__file__).parent / "assets/study_music.wav"),
-            loop=True,
+    if st.toggle(
+        "🎵 Study music",
+        value=True,
+        key="study_music_enabled",
+    ):
+        music_path = (
+            Path(__file__).parent / "assets/study_music.mp3"
         )
+
+        if music_path.exists():
+            encoded_music = load_music(
+                str(music_path),
+                music_path.stat().st_mtime_ns,
+            )
+
+            components.html(
+                f"""
+                <audio
+                    id="waddle-music"
+                    controls
+                    loop
+                    preload="auto"
+                    aria-label="Waddle's study music"
+                    style="width:100%;"
+                >
+                    <source
+                        src="data:audio/mpeg;base64,{encoded_music}"
+                        type="audio/mpeg"
+                    >
+                </audio>
+
+                <p
+                    id="music-message"
+                    style="font:12px sans-serif;color:#666;"
+                ></p>
+
+                <script>
+                    const music =
+                        document.getElementById("waddle-music");
+
+                    // 0.10 = 10% starting volume.
+                    // Change to 0.05 for 5%.
+                    music.volume = 0.10;
+
+                    music.play().catch(() => {{
+                        document.getElementById(
+                            "music-message"
+                        ).textContent =
+                            "Press Play to start the study music.";
+                    }});
+                </script>
+                """,
+                height=100,
+            )
+
+        else:
+            st.info(
+                "Upload study_music.mp3 into the assets folder."
+            )
 
     if "quest" in st.session_state and st.button("Return to start"):
         del st.session_state.quest
