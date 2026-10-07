@@ -3,6 +3,7 @@ from uuid import uuid4
 import base64
 import csv
 import io
+import re
 from html import escape
 
 import streamlit as st
@@ -82,15 +83,13 @@ h1,h2,h3,p,label {color:#263b54;}
 </style>""", unsafe_allow_html=True)
 
 
-def game_message(message):
-    st.markdown(f'<div class="bubble">🐧 <b>Waddle says:</b> {escape(message)}</div>', unsafe_allow_html=True)
 
+def fraction_text(value):
+    """Format fraction tokens for display without changing stored answers."""
+    pattern = r'(?<![\w/])(?:(-?\d+)\s+)?(-?\d+)\s*/\s*(\d+)(?![\w/])'
+    def replace(match):
+        whole, numerator, denominator = match.groups()
+        fraction = rf'\dfrac{{{numerator}}}{{{denominator}}}'
+        return '$' + (whole + r'\,' if whole is not None else '') + fraction + '$'
+    return re.sub(pattern, replace, str(value))
 
-def rewards(results):
-    """Cosmetic rewards never alter assessment points or leaderboard scores."""
-    streak = best = correct = 0
-    for result in results:
-        if result["correct"]:
-            correct += 1
-            streak += 1
-            best = max(best, streak)
