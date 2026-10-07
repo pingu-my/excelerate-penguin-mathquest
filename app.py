@@ -74,12 +74,22 @@ h1,h2,h3,p,label {color:#263b54;}
 
 
 def fraction_text(value):
-    """Format fraction tokens for display without changing stored answers."""
-    pattern = r'(?<![\w/])(?:(-?\d+)\s+)?(-?\d+)\s*/\s*(\d+)(?![\w/])'
+    """Display numeric fractions and fractions containing a missing value."""
+    pattern = (
+        r"(?<![\w/])(?:(-?\d+)\s+)?"
+        r"(-?\d+|\?|□)\s*/\s*(-?\d+|\?|□)(?![\w/])"
+    )
+
     def replace(match):
         whole, numerator, denominator = match.groups()
-        fraction = rf'\dfrac{{{numerator}}}{{{denominator}}}'
-        return '$' + (whole + r'\,' if whole is not None else '') + fraction + '$'
+        if numerator in ("?", "□"):
+            numerator = r"\Box"
+        if denominator in ("?", "□"):
+            denominator = r"\Box"
+        fraction = rf"\dfrac{{{numerator}}}{{{denominator}}}"
+        prefix = whole + r"\," if whole is not None else ""
+        return "$" + prefix + fraction + "$"
+
     return re.sub(pattern, replace, str(value))
 
 
