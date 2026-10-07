@@ -1,0 +1,7 @@
+.board {font-family:var(--st-font);color:var(--st-text-color)}
+.card {display:flex;align-items:center;gap:12px;margin:10px 0;padding:14px;border:2px solid #52a8c1;border-radius:12px;background:var(--st-secondary-background-color);cursor:grab}
+.card.dragging {opacity:.45}
+.card span {flex:1;font-size:1.2rem;font-weight:bold}
+button {border:1px solid #52a8c1;border-radius:8px;background:var(--st-background-color);color:var(--st-text-color);padding:8px 14px;cursor:pointer}
+button:focus {outline:3px solid #e0a526}
+small {display:block;margin-bottom:12px}
