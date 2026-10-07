@@ -11,7 +11,6 @@ import streamlit.components.v1 as components
 
 from curriculum import PATHS, DIFFICULTIES, POINTS, available_topics
 from question_engine import build_adventure
-from teacher_dashboard import teacher_dashboard
 from answer_checker import number
 from scoring import record, summary
 from leaderboard import save, rows
@@ -29,6 +28,13 @@ with st.sidebar:
     app_view = st.radio("Open", ["Student adventure", "Teacher dashboard"], key="app_view")
 
 if app_view == "Teacher dashboard":
+    try:
+        from teacher_dashboard import teacher_dashboard
+    except ModuleNotFoundError as exc:
+        if exc.name != "teacher_dashboard":
+            raise
+        st.error("Teacher dashboard is not installed yet. Add teacher_dashboard.py to the same folder as app.py. You can still select Student adventure in the sidebar.")
+        st.stop()
     teacher_dashboard()
     st.stop()
 
@@ -88,8 +94,3 @@ def fraction_text(value):
     """Format fraction tokens for display without changing stored answers."""
     pattern = r'(?<![\w/])(?:(-?\d+)\s+)?(-?\d+)\s*/\s*(\d+)(?![\w/])'
     def replace(match):
-        whole, numerator, denominator = match.groups()
-        fraction = rf'\dfrac{{{numerator}}}{{{denominator}}}'
-        return '$' + (whole + r'\,' if whole is not None else '') + fraction + '$'
-    return re.sub(pattern, replace, str(value))
-
